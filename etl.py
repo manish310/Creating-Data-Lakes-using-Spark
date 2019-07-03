@@ -23,35 +23,32 @@ os.environ['AWS_SECRET_ACCESS_KEY']=config['AWS CREDS']['AWS_SECRET_ACCESS_KEY']
 def create_spark_session():
     """
     Description: This function can be used to create spark session.
-
     Arguments:
-        None
+        None.
     Returns:
-        spark
+        spark session object.
     """
     spark = SparkSession \
         .builder \
         .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:2.7.0") \
         .getOrCreate()
-    # sparkContext.setLogLevel('ERROR')
     spark.sparkContext.setLogLevel('ERROR')
     return spark
 
 
 def process_song_data(spark, input_data, output_data):
     """
-    Description: This function can be used to read the file in the filepath (data/song_data)
+    Description: This function can be used to read the file in the filepath (/song_data)
     to get the song and artist info and used to populate the songs and artists dim tables.
-
     Arguments:
         spark: the spark session object. 
         input_data: song data file path. 
-        output_data:
+        output_data: output S3 bucket path.
     Returns:
         None
     """
     # get filepath to song data file
-    song_data = os.path.join(input_data,"song_data/A/A/A/*.json")
+    song_data = os.path.join(input_data,"song_data/*/*/*/*.json")
     
     # read song data file
     print("Processing Song Data File ...\n")
@@ -59,12 +56,12 @@ def process_song_data(spark, input_data, output_data):
     
     print(" -- Spark able to read JSON file successfully!")
     print(" -- Number of records in song_data file is: {} ".format(df.count()))
-#     print(df.printSchema())
-#     print(df.take(5))
+    #print(df.printSchema())
+    #df.show(5)
     
     # extract columns to create songs table
     songs_table = df.select(['song_id','title','artist_id','year','duration'])
-#     print(songs_table.printSchema())
+    #print(songs_table.printSchema())
     print(" -- songs_table data extracted successfully!")
     
     songs_table=songs_table.dropDuplicates()
@@ -85,13 +82,13 @@ def process_song_data(spark, input_data, output_data):
 
 def process_log_data(spark, input_data, output_data):
     """
-    Description: This function can be used to read the file in the filepath (data/log_data) 
+    Description: This function can be used to read the file in the filepath (/log_data) 
     to get the user and time info and used to populate the users and time dim tables.
-
+    Also, Fact table songplays populated herein.
     Arguments:
         spark: the spark session object. 
-        input_data: song data file path. 
-        output_data:
+        input_data: log data file path. 
+        output_data: output S3 bucket path.  
     Returns:
         None
     """   
@@ -112,7 +109,7 @@ def process_log_data(spark, input_data, output_data):
     users_table =df.select(['userId','firstname','lastname','gender','level'])
     print(" -- users_table data extracted successfully!")
     
-    #users_table=users_table.dropDuplicates()
+    users_table=users_table.dropDuplicates()
     # write users table to parquet files
     users_table.write.parquet(os.path.join(output_data,"users_table/"),mode="overwrite")
     print(" -- users_table data written successfully!")
@@ -139,8 +136,9 @@ def process_log_data(spark, input_data, output_data):
     print(" -- time_table data extracted successfully!")
     
     # write time table to parquet files partitioned by year and month
-    time_table.write.partitionBy("year","month").parquet(os.path.join(output_data,"time_table/"),mode="overwrite")
-    print(" -- time_table data written successfully!")
+    time_table.write.partitionBy("year","month").parquet(os.path.\
+               join(output_data,"time_table/"),mode="overwrite")
+    print(" -- time_table data written successfully!") 
     
     # read in song data to use for songplays table
     song_df = spark.read.option("basePath", os.path.join(output_data,"song_table")).\
@@ -153,7 +151,7 @@ def process_log_data(spark, input_data, output_data):
     artist_df.createOrReplaceTempView("artist")
 
     # extract columns from joined song and log datasets to create songplays table 
-    songplays_table = spark.sql("""SELECT timestamp(l.ts) AS start_time,
+    songplays_table = spark.sql(""" SELECT timestamp(l.ts) AS start_time,
                                     year(timestamp(l.ts)) AS year,
                                     month(timestamp(l.ts)) AS month,
                                     l.userid,
@@ -179,32 +177,30 @@ def process_log_data(spark, input_data, output_data):
 # reading all files list in the directory
 def read_data(spark,output_data,table_name):
     """
-    Description: This function can be used to read the file in the filepath (data/log_data) 
-    to get the user and time info and used to populate the users and time dim tables.
+    Description: This function can be used to read the tables data.
 
     Arguments:
         spark: the spark session object.  
-        output_data:
-        table_name:
+        output_data: Parquet filepath.
+        table_name: Parquet filename.
     Returns:
         None
     """ 
     df=spark.read.option("basePath", os.path.join(output_data,table_name)).\
               load(os.path.join(output_data,table_name,"*"))
-    df.show(n=5)
+    df.show(10)
 
 # reading all files list in the directory
 def read_summ(spark,output_data,table_name):
     """
-    Description: This function can be used to read the file in the filepath (data/log_data) 
-    to get the user and time info and used to populate the users and time dim tables.
+    Description: This function can be used to read tables summary.
 
     Arguments:
         spark: the spark session object.  
-        output_data:
-        table_name:
+        output_data:Parquet filepath
+        table_name: Parquet filename.
     Returns:
-        None
+        Counts.
     """ 
     df=spark.read.load(os.path.join(output_data,table_name))
     return (df.count())
@@ -217,11 +213,11 @@ def main():
     input_data =  "s3a://udacity-dend/"
     output_data = "s3a://dend-data-lake-310/"
     
-    #process_song_data(spark, input_data, output_data)    
+    process_song_data(spark, input_data, output_data)    
     process_log_data(spark, input_data, output_data)
 
     t_list=['song_table','artist_table','users_table','time_table','songplays_table']
-    print("\n -- Data Quality Checks \n")
+    print("\nData Quality Checks ... \n")
     for t in t_list:
         print(" {}:".format(t))
         read_data(spark,output_data,t)
